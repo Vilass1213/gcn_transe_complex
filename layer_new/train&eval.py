@@ -7,12 +7,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from data_preprocessing import DatasetSplitter
-from model_definition import RGCNEncoder, TransEDecoder, ComplExDecoder
+from model_definition import RGCNEncoder, TransEDecoder, TransRDecoder,DistMultDecoder
 from negative_sampling import RandomNegativeSampler
 
 
 def train_and_evaluate(file_path):
-    dataset_splitter = DatasetSplitter(file_path, test_size=0.2, random_state=42)
+    dataset_splitter = DatasetSplitter(file_path, random_state=42)
     train_triples, num_entities, num_rels = dataset_splitter.get_train_data()
     test_triples, _, _ = dataset_splitter.get_test_data()
 
@@ -23,7 +23,8 @@ def train_and_evaluate(file_path):
     embedding_dim = 100
     encoder = RGCNEncoder(num_entities, num_rels, embedding_dim)
     transe_decoder = TransEDecoder()
-    complex_decoder = ComplExDecoder()
+    # transr_decoder = TransRDecoder(entity_dim, rel_dim)
+    distmult_decoder = DistMultDecoder()
 
     # Negative sampler
     neg_sampler = RandomNegativeSampler(train_triples, num_entities)
@@ -33,6 +34,7 @@ def train_and_evaluate(file_path):
     optimizer = optim.Adam(encoder.parameters(), lr=0.001)
 
     num_epochs = 50
+    
     for epoch in range(num_epochs):
         encoder.train()
         total_loss = 0.0
@@ -114,13 +116,13 @@ def train_and_evaluate(file_path):
     print(f"TransE Test AUC: {transe_auc}")
 
     # Evaluate ComplEx
-    complex_auc, complex_fpr, complex_tpr = evaluate(complex_decoder)
-    print(f"ComplEx Test AUC: {complex_auc}")
+    distmult_auc, distmult_fpr, distmult_tpr = evaluate(distmult_decoder)
+    print(f"DistMult Test AUC: {distmult_auc}")
 
     # Plot ROC curves
     plt.figure()
     plt.plot(transe_fpr, transe_tpr, label=f'TransE (AUC = {transe_auc:.2f})')
-    plt.plot(complex_fpr, complex_tpr, label=f'ComplEx (AUC = {complex_auc:.2f})')
+    plt.plot(distmult_fpr, distmult_tpr, label=f'DistMult (AUC = {distmult_auc:.2f})')
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curve')
@@ -129,5 +131,5 @@ def train_and_evaluate(file_path):
 
 
 if __name__ == "__main__":
-    file_path = '../data/indications.tsv'
+    file_path = '../data/drug_disease.csv'
     train_and_evaluate(file_path)

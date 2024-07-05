@@ -1,21 +1,18 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 import torch
 import dgl
-
+from sklearn.model_selection import train_test_split
 
 class DatasetSplitter:
-    def __init__(self, file_path, test_size=0.2, val_size=0.1, random_state=42):
+    def __init__(self, file_path, random_state=28):
         self.file_path = file_path
-        self.test_size = test_size
-        self.val_size = val_size
         self.random_state = random_state
         self.entity2id = {}
         self.rel2id = {}
         self._load_data()
 
     def _load_data(self):
-        data = pd.read_csv(self.file_path, sep='\t')
+        data = pd.read_csv(self.file_path)
 
         def get_or_add_entity(entity):
             if entity not in self.entity2id:
@@ -28,22 +25,40 @@ class DatasetSplitter:
             return self.rel2id[rel]
 
         triples = []
-        for _, row in data.iterrows():
-            head = row['compound_id']
-            tail = row['disease_id']
-            rel = row['rel_type']
-            head_id = get_or_add_entity(head)
-            tail_id = get_or_add_entity(tail)
-            rel_id = get_or_add_rel(rel)
-            triples.append((head_id, rel_id, tail_id))
+        for i, row in data.iterrows():
+            for j, val in enumerate(row):
+                if val != 0:
+                    head = f"drug_{i}"
+                    tail = f"disease_{j}"
+                    rel = "drug-disease"
+                    head_id = get_or_add_entity(head)
+                    tail_id = get_or_add_entity(tail)
+                    rel_id = get_or_add_rel(rel)
+                    triples.append((head_id, rel_id, tail_id))
 
         self.num_entities = len(self.entity2id)
         self.num_rels = len(self.rel2id)
 
-        train_val_triples, self.test_triples = train_test_split(triples, test_size=self.test_size,
-                                                                random_state=self.random_state)
-        self.train_triples, self.val_triples = train_test_split(train_val_triples, test_size=self.val_size,
-                                                                random_state=self.random_state)
+        from collections import defaultdict
+
+        disease_dict = defaultdict(list)
+        for head_id, rel_id, tail_id in triples:
+            disease_dict[tail_id].append((head_id, rel_id, tail_id))
+
+        train_triples, val_triples, test_triples = [], [], []
+        for disease, triple_list in disease_dict.items():
+            if len(triple_list) >= 10:
+                train, test = train_test_split(triple_list, test_size=0.2, random_state=self.random_state)
+                train, val = train_test_split(train, test_size=0.125, random_state=self.random_state)
+                train_triples.extend(train)
+                val_triples.extend(val)
+                test_triples.extend(test)
+            else:
+                train_triples.extend(triple_list)
+
+        self.train_triples = train_triples
+        self.val_triples = val_triples
+        self.test_triples = test_triples
 
     def get_train_data(self):
         return self.train_triples, self.num_entities, self.num_rels
@@ -62,3 +77,14 @@ class DatasetSplitter:
         g = dgl.graph((src, dst), num_nodes=self.num_entities)
         g.edata['rel_type'] = rel
         return g
+
+
+# 使用示例
+splitter = DatasetSplitter('../data/drug_disease.csv')
+train_triples, num_entities, num_rels = splitter.get_train_data()
+val_triples = splitter.get_val_data()
+test_triples = splitter.get_test_data()
+
+g = splitter.get_graph(train_triples)
+print(g,train_triples,val_triples,test_triples)
+
